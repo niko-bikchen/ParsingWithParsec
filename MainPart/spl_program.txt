@@ -1,0 +1,16 @@
+{ 
+    int b;
+    int e;
+    int out;
+
+    b := 6;
+    e := 5;
+    out := 1;
+ 
+    {
+        int i;
+        
+        for (i := 0; i < e; i++)
+            out := out * b
+    }
+}
