@@ -44,36 +44,54 @@ data Type
   deriving (Show, Eq)
 
 data DataToken
-  = PlusToken
+  = ArithmOpToken
       { lin, col :: Int
+      , arithmOperation :: String
       }
-  | MinusToken
+  | BoolOpToken
       { lin, col :: Int
+      , boolOperation :: String
       }
-  | MultiplyToken
+  | SymbolToken
       { lin, col :: Int
+      , customSymbol :: String
       }
-  | DivideToken
+  | KeywordToken
       { lin, col :: Int
+      , reservedWord :: String
       }
-  | BoolAndToken
+  | OpToken
       { lin, col :: Int
+      , operator :: String
       }
-  | BoolOrToken
+  | VarNameToken
       { lin, col :: Int
+      , varName :: String
       }
-  | BoolEqToken
-      { lin, col :: Int
-      }
-  | BoolLtToken
-      { lin, col :: Int
-      }
-  | BoolGtToken
-      { lin, col :: Int
-      }
-  | BoolLeToken
-      { lin, col :: Int
-      }
-  | BoolGeToken
-      { lin, col :: Int
-      }
+
+instance Show DataToken where
+  show ArithmOpToken {arithmOperation = op} = "ArithmOpToken " ++ show op
+  show BoolOpToken {boolOperation = op} = "BoolOpToken " ++ show op
+  show SymbolToken {customSymbol = sym} = "SymbolToken " ++ show sym
+  show KeywordToken {reservedWord = rw} = "KeywordToken " ++ show rw
+  show VarNameToken {varName = vn} = "VarNameToken " ++ show vn
+
+instance Eq DataToken where
+  (==) ArithmOpToken {arithmOperation = ao1} ArithmOpToken {arithmOperation = ao2} =
+    ao1 == ao2
+  (==) BoolOpToken {boolOperation = bo1} BoolOpToken {boolOperation = bo2} =
+    bo1 == bo2
+  (==) SymbolToken {customSymbol = sym1} SymbolToken {customSymbol = sym2} =
+    sym1 == sym2
+  (==) KeywordToken {reservedWord = rw1} KeywordToken {reservedWord = rw2} =
+    rw1 == rw2
+  (==) VarNameToken {varName = vn1} VarNameToken {varName = vn2} = vn1 == vn2
+
+lexer :: Int -> Int -> String -> [DataToken]
+lexer _ _ [] = []
+lexer lin col ('+':rest) = ArithmOpToken lin col "+" : lexer lin (col + 1) rest
+lexer lin col ('-':rest) = ArithmOpToken lin col "-" : lexer lin (col + 1) rest
+lexer lin col ('*':rest) = ArithmOpToken lin col "*" : lexer lin (col + 1) rest
+lexer lin col ('/':rest) = ArithmOpToken lin col "/" : lexer lin (col + 1) rest
+lexer lin col ('+':'+':rest) =
+  ArithmOpToken lin col "++" : lexer lin (col + 1) rest
