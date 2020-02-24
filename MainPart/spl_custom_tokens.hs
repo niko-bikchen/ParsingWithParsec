@@ -1,8 +1,9 @@
+{-# OPTIONS_GHC -Wall #-}
+
 import Control.Monad
 import Data.Char
 import Data.List
 import Data.Maybe
-import System.IO
 import qualified Text.Parsec as Parsec
 import Text.ParserCombinators.Parsec
 
@@ -47,39 +48,39 @@ data Type
 
 data DataToken
   = ArithmOpToken
-      { lin, col :: Int
+      { line, column :: Int
       , arithmOperator :: String
       }
   | BoolOpToken
-      { lin, col :: Int
+      { line, column :: Int
       , boolOperator :: String
       }
   | AssignOpToken
-      { lin, col :: Int
+      { line, column :: Int
       , operator :: String
       }
   | KeywordToken
-      { lin, col :: Int
+      { line, column :: Int
       , reservedWord :: String
       }
   | VarTypeToken
-      { lin, col :: Int
+      { line, column :: Int
       , varType :: String
       }
   | VarNameToken
-      { lin, col :: Int
+      { line, column :: Int
       , varName :: String
       }
   | NumConstToken
-      { lin, col :: Int
+      { line, column :: Int
       , numValue :: Int
       }
   | BoolConstToken
-      { lin, col :: Int
+      { line, column :: Int
       , boolValue :: Bool
       }
   | DelimiterSymbolToken
-      { lin, col :: Int
+      { line, column :: Int
       , customSymbol :: String
       }
 
@@ -111,6 +112,7 @@ instance Eq DataToken where
   (==) NumConstToken {} NumConstToken {} = True
   (==) BoolConstToken {boolValue = val1} BoolConstToken {boolValue = val2} =
     val1 == val2
+  (==) _ _ = False
 
 boolOperators :: [String]
 boolOperators = ["&", "|", "==", "<=", ">=", "<", ">"]
@@ -224,7 +226,7 @@ parseAssignmentOp lin col str =
 
 lexer :: Int -> Int -> String -> [DataToken]
 lexer _ _ [] = []
-lexer lin col input@(chr:chrs)
+lexer lin col input@(ch:chrs)
   | any (`isPrefixOf` input) arithmeticOperators =
     case parseArithmOp lin col input of
       Just (tok, newLin, newCol, rest) -> tok : lexer newLin newCol rest
@@ -253,7 +255,7 @@ lexer lin col input@(chr:chrs)
     case parseDelimiterSymbol lin col input of
       Just (tok, newLin, newCol, rest) -> tok : lexer newLin newCol rest
       Nothing -> lexer lin col input
-  | isDigit chr =
+  | isDigit ch =
     case parseNumLiteral lin col input of
       Just (tok, newLin, newCol, rest) -> tok : lexer newLin newCol rest
       Nothing -> lexer lin col input
@@ -264,22 +266,22 @@ lexer lin col input@(chr:chrs)
         case stripPrefix "\r\n" input of
           Just rest -> lexer (lin + 1) (col + 2) rest
           Nothing -> lexer lin col input
-  | isSpace chr = lexer lin (col + 1) chrs
-  | isAlpha chr =
+  | isSpace ch = lexer lin (col + 1) chrs
+  | isAlpha ch =
     case parseVarName lin col input of
       Just (tok, newLin, newCol, rest) -> tok : lexer newLin newCol rest
       Nothing -> lexer lin col input
   | otherwise =
     error
       ("lexer: unexpected character: " ++
-       show chr ++ " at line " ++ show lin ++ " column " ++ show col)
+       show ch ++ " at line " ++ show lin ++ " column " ++ show col)
 
 runLexer :: String -> [DataToken]
 runLexer = lexer 1 1
 
 updatePos :: SourcePos -> DataToken -> [DataToken] -> SourcePos
 updatePos pos _ (tok:_) =
-  setSourceLine (setSourceColumn pos (col tok)) (lin tok)
+  setSourceLine (setSourceColumn pos (column tok)) (line tok)
 updatePos pos _ [] = pos
 
 satisfyT ::
@@ -322,7 +324,7 @@ matchBoolOp :: String -> Parsec.Parsec [DataToken] () DataToken
 matchBoolOp op = satisfyT (== BoolOpToken 0 0 op)
 
 matchBoolConst :: Bool -> Parsec.Parsec [DataToken] () DataToken
-matchBoolConst const = satisfyT (== BoolConstToken 0 0 const)
+matchBoolConst val = satisfyT (== BoolConstToken 0 0 val)
 
 matchNumber :: Parsec.Parsec [DataToken] () DataToken
 matchNumber = satisfyT (== NumConstToken 0 0 0)
@@ -331,6 +333,64 @@ matchVarName :: Parsec.Parsec [DataToken] () DataToken
 matchVarName = satisfyT (== VarNameToken 0 0 "")
 
 matchVarType :: String -> Parsec.Parsec [DataToken] () DataToken
-matchVarType varType = satisfyT (== VarTypeToken 0 0 varType)
+matchVarType tp = satisfyT (== VarTypeToken 0 0 tp)
+
+arithmOpBop :: String -> Bop -> Parsec.Parsec [DataToken] () Bop
+arithmOpBop op bop = do
+  void $ matchArithmOp op
+  return bop
+
+boolOpBop :: String -> Bop -> Parsec.Parsec [DataToken] () Bop
+boolOpBop op bop = do
+  void $ matchBoolOp op
+  return bop
+
+mulOrDivOp :: Parsec.Parsec [DataToken] () Bop
+mulOrDivOp = arithmOpBop "*" Times <|> arithmOpBop "/" Div
+
+addOrSubOp :: Parsec.Parsec [DataToken] () Bop
+addOrSubOp = try (arithmOpBop "+" Plus) <|> try (arithmOpBop "-" Minus)
+
+andOp :: Parsec.Parsec [DataToken] () Bop
+andOp = boolOpBop "&" Ba
+
+orOp :: Parsec.Parsec [DataToken] () Bop
+orOp = boolOpBop "|" Bo
+
+relOp :: Parsec.Parsec [DataToken] () Bop
+relOp =
+  try (boolOpBop ">=" Ge) <|> try (boolOpBop ">" Gt) <|> try (boolOpBop "<=" Le) <|>
+  try (boolOpBop "==" Eql) <|>
+  try (boolOpBop "<" Lt)
+
+factor :: Parsec.Parsec [DataToken] () Exp
+factor =
+  (do void $ matchDelimiter "("
+      x <- expr
+      void $ matchDelimiter ")"
+      return x) <|>
+  (do num <- numValue <$> matchNumber
+      return (Const (I num))) <|>
+  (do void $ matchBoolConst True
+      return (Const (B True))) <|>
+  (do void $ matchBoolConst False
+      return (Const (B False))) <|>
+  (do name <- varName <$> matchVarName
+      return (Var name) <?> "factor")
+
+term :: Parsec.Parsec [DataToken] () Exp
+term = bopPrsr factor mulOrDivOp
+
+relat :: Parsec.Parsec [DataToken] () Exp
+relat = bopPrsr term addOrSubOp
+
+conj :: Parsec.Parsec [DataToken] () Exp
+conj = bopPrsr relat relOp
+
+disj :: Parsec.Parsec [DataToken] () Exp
+disj = bopPrsr conj orOp
+
+expr :: Parsec.Parsec [DataToken] () Exp
+expr = bopPrsr disj andOp
 -- commenceParsing :: String -> Either ParseError Stmt
 -- commenceParsing programText = parse main "parameter" programText
