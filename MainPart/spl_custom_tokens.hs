@@ -46,6 +46,8 @@ data Type
   | Bt
   deriving (Show, Eq)
 
+type Program = Stmt
+
 data DataToken
   = ArithmOpToken
       { line, column :: Int
@@ -124,7 +126,7 @@ varTypes :: [String]
 varTypes = ["bool", "int"]
 
 reservedWords :: [String]
-reservedWords = ["if", "else", "while", "for", "then"]
+reservedWords = ["if", "else", "while", "for"]
 
 delimitingSymbols :: [String]
 delimitingSymbols = [";", "(", ")", "{", "}"]
@@ -320,6 +322,9 @@ matchDelimiter delimiter = satisfyT (== DelimiterSymbolToken 0 0 delimiter)
 matchArithmOp :: String -> Parsec.Parsec [DataToken] () DataToken
 matchArithmOp op = satisfyT (== ArithmOpToken 0 0 op)
 
+matchAssignOp :: Parsec.Parsec [DataToken] () DataToken
+matchAssignOp = satisfyT (== AssignOpToken 0 0 ":=")
+
 matchBoolOp :: String -> Parsec.Parsec [DataToken] () DataToken
 matchBoolOp op = satisfyT (== BoolOpToken 0 0 op)
 
@@ -392,5 +397,137 @@ disj = bopPrsr conj orOp
 
 expr :: Parsec.Parsec [DataToken] () Exp
 expr = bopPrsr disj andOp
--- commenceParsing :: String -> Either ParseError Stmt
--- commenceParsing programText = parse main "parameter" programText
+
+forSt :: Parsec.Parsec [DataToken] () Stmt
+forSt = do
+  void $ matchDelimiter "("
+  st1 <- stmt
+  void $ matchDelimiter ";"
+  ex <- expr
+  void $ matchDelimiter ";"
+  st2 <- stmt
+  void $ matchDelimiter ")"
+  For st1 ex st2 <$> stmt
+
+whileSt :: Parsec.Parsec [DataToken] () Stmt
+whileSt = do
+  void $ matchDelimiter "("
+  ex <- expr
+  void $ matchDelimiter ")"
+  While ex <$> stmt
+
+ifSt :: Parsec.Parsec [DataToken] () Stmt
+ifSt = do
+  void $ matchDelimiter "("
+  ex <- expr
+  void $ matchDelimiter ")"
+  st1 <- stmt
+  void $ matchKeyword "else"
+  If ex st1 <$> stmt
+
+assignSt :: String -> Parsec.Parsec [DataToken] () Stmt
+assignSt name =
+  (do void $ matchArithmOp "++"
+      return $ Incr name) <|>
+  (do void matchAssignOp
+      Assign name <$> expr)
+
+iden :: Parsec.Parsec [DataToken] () String
+iden =
+  try $ do
+    name <- varName <$> matchVarName
+    if name `elem`
+       ["int", "bool", "if", "while", "for", "else", "True", "False"]
+      then unexpected ("use of reserved word " ++ show name)
+      else return name
+
+idenType :: Parsec.Parsec [DataToken] () Type
+idenType =
+  (do void $ matchVarType "int"
+      return It) <|>
+  (do void $ matchVarType "bool"
+      return Bt)
+
+defin :: Parsec.Parsec [DataToken] () (String, Type)
+defin = do
+  tp <- idenType
+  name <- varName <$> matchVarName
+  void $ matchDelimiter ";"
+  return (name, tp)
+
+listStmt :: Parsec.Parsec [DataToken] () [Stmt]
+listStmt = stmt `sepBy` (matchDelimiter ";")
+
+blockSt :: Parsec.Parsec [DataToken] () Stmt
+blockSt = do
+  void $ matchDelimiter "{"
+  defins <- many defin
+  stmts <- listStmt
+  void $ matchDelimiter "}"
+  return $ Block defins stmts
+
+stmt :: Parsec.Parsec [DataToken] () Stmt
+stmt =
+  (do void $ matchKeyword "for"
+      forSt) <|>
+  (do void $ matchKeyword "while"
+      whileSt) <|>
+  (do void $ matchKeyword "if"
+      ifSt) <|>
+  (do var <- iden
+      assignSt var) <|>
+  (blockSt <?> "statement")
+
+startParser :: String -> Either ParseError Stmt
+startParser programText = parse stmt "parameter" (runLexer programText)
+
+-- Tests
+power :: String
+power =
+  "{ int b; int e; int out; b := 6; e := 5; out:= 1;\
+   \  {int i; for (i:=0; i<e; i++) out := out*b}   \
+   \}"
+
+powerAST :: Program
+powerAST =
+  Block
+    [("b", It), ("e", It), ("out", It)]
+    [ Assign "b" (Const (I 6))
+    , Assign "e" (Const (I 5))
+    , Assign "out" (Const (I 1))
+    , Block
+        [("i", It)]
+        [ For
+            (Assign "i" (Const (I 0)))
+            (Op (Var "i") Lt (Var "e"))
+            (Incr "i")
+            (Assign "out" (Op (Var "out") Times (Var "b")))
+        ]
+    ]
+
+squareRoot :: String
+squareRoot =
+  "{int a; int b; a := 317; b := 0;\
+   \  {bool c; c:=true; while(c) {b++; c:= a >= b*b}};\
+   \  b := b-1\
+   \ }"
+
+squareRootAST :: Program
+squareRootAST =
+  Block
+    [("a", It), ("b", It)]
+    [ Assign "a" (Const (I 317))
+    , Assign "b" (Const (I 0))
+    , Block
+        [("c", Bt)]
+        [ Assign "c" (Const (B True))
+        , While
+            (Var "c")
+            (Block
+               []
+               [ (Incr "b")
+               , Assign "c" (Op (Var "a") Ge (Op (Var "b") Times (Var "b")))
+               ])
+        ]
+    , Assign "b" (Op (Var "b") Minus (Const (I 1)))
+    ]
