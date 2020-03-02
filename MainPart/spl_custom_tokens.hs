@@ -1,5 +1,7 @@
 {-# OPTIONS_GHC -Wall #-}
 
+module SPLCustom where
+
 import Control.Monad
 import Data.Char
 import Data.List
