@@ -1,3 +1,17 @@
+{-
+Name: spl_custom_tokens.hs
+Author: Nikolay Bikchentaev
+Version: 1.0
+===========================
+This program parses SPL source code
+by decomposing it into custom tokens
+which we define below instead of
+standard Parsec tokens represented as Char.
+We parse these custom tokens with the
+functions we define ourselves, since
+the standard Parsec functions are only
+for Char tokens
+-}
 {-# OPTIONS_GHC -Wall #-}
 
 module SPLCustom where
@@ -50,6 +64,7 @@ data Type
 
 type Program = Stmt
 
+-- Custom token definition
 data DataToken
   = ArithmOpToken
       { line, column :: Int
@@ -228,6 +243,7 @@ parseAssignmentOp lin col str =
       Just (AssignOpToken lin col op, newLin, newCol, rest)
     Nothing -> Nothing
 
+-- Decomposes input source code into tokens
 lexer :: Int -> Int -> String -> [DataToken]
 lexer _ _ [] = []
 lexer lin col input@(ch:chrs)

@@ -1,3 +1,16 @@
+{-
+Name: spl_custom_alex.hs
+Author: Nikolay Bikchentaev
+Version: 1.0
+===========================
+This program parses SPL source code
+by decomposing it into custom tokens
+which we define in the Alex source file
+named "AlexLexer.x". In this file we 
+spicify our lexer and tokens it will
+generate. This file is used by Alex
+to generate .hs file with the lexer.
+-}
 {-# OPTIONS_GHC -Wall #-}
 
 module SPLAlex where

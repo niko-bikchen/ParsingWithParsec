@@ -1,8 +1,21 @@
+{-
+Name: spl_parser.hs
+Author: Nikolay Bikchentaev
+Version: 1.0
+===========================
+This program parses SPL source code
+using predifined Parsec functions
+-}
+
+{-# OPTIONS_GHC -Wall #-}
+
+module SPLParser where
+
 import Control.Monad
-import System.IO
 import qualified Text.Parsec as Parsec
 import Text.ParserCombinators.Parsec
 
+-- Type for variable value
 data Value
   = I Int
   | B Bool
@@ -37,14 +50,17 @@ data Stmt
   | Block [(String, Type)] [Stmt]
   deriving (Show, Eq)
 
+-- Type for variable type
 data Type
   = It
   | Bt
   deriving (Show, Eq)
 
+-- Alias for statement
 type Program = Stmt
 
-{- Task� 
+-- General grammar (keywords, operators, etc.)
+{-
   symbol = ';' | '{' | '}' | '(' | ')' 
   idenName=  char {digit | char}
   keyword= "int" | "bool" | "if" | "while" | "for" | "else" | "true" | "false"
@@ -134,6 +150,7 @@ relOp =
   try (oprtr "==" Eql) <|>
   try (oprtr "<" Lt)
 
+-- Expression grammar
 {-
   factor = '(' expr ')' | number | "true" | "false" | iden
   term   = factor { mulOrDivOp factor }
@@ -186,6 +203,7 @@ disj = bopPrsr conj orOp
 expr :: Parsec.Parsec String [(String, SourcePos)] Exp
 expr = bopPrsr disj andOp
 
+-- Statement grammar
 {-
   stmt   = "for" forSt | "while" whileSt | "if" ifSt 
          | iden assSt | blockSt  
@@ -234,14 +252,14 @@ ifSt = do
   ex <- expr
   symbol ')'
   st1 <- stmt
-  string "else"
+  void $ string "else"
   If ex st1 <$> stmt
 
 assignSt :: String -> Parsec.Parsec String [(String, SourcePos)] Stmt
 assignSt varName =
-  (do string "++"
+  (do void $ string "++"
       return $ Incr varName) <|>
-  (do string ":="
+  (do void $ string ":="
       whitespaces
       Assign varName <$> expr)
 
@@ -249,10 +267,10 @@ defin :: Parsec.Parsec String [(String, SourcePos)] (String, Type)
 defin = do
   pos <- Parsec.getPosition
   tp <- idenType
-  id <- idenName
-  Parsec.modifyState (\state -> state ++ [(id, pos)])
+  idn <- idenName
+  Parsec.modifyState (\state -> state ++ [(idn, pos)])
   symbol ';'
-  return (id, tp)
+  return (idn, tp)
 
 listStmt :: Parsec.Parsec String [(String, SourcePos)] [Stmt]
 listStmt = stmt `sepBy` (symbol ';')
@@ -272,6 +290,8 @@ program = do
   eof
   return r
 
+-- Runs the parser
+parseSPL :: String -> Either ParseError (Stmt, [(String, SourcePos)])
 parseSPL =
   Parsec.runParser
     (do pr <- program
@@ -280,6 +300,21 @@ parseSPL =
     []
     ""
 
+-- Builds symbol table like (var name, (line, col))
+buildSymbolTable :: String -> Either ParseError [(String, SourcePos)]
+buildSymbolTable text =
+  case parseSPL text of
+    Right res -> Right $ snd res
+    Left err -> Left err
+
+-- Parses program source code
+startParser :: String -> Either ParseError Stmt
+startParser text =
+  case parseSPL text of
+    Right res -> Right $ fst res
+    Left err -> Left err
+
+-- Parses text from a file
 parseFile :: String -> IO Stmt
 parseFile file = do
   program_txt <- readFile file
@@ -287,7 +322,7 @@ parseFile file = do
     Left e -> print e >> fail "parse error"
     Right r -> return r
 
--- Tests
+-- Test data
 power :: String
 power =
   "{ int b; int e; int out; b := 6; e := 5; out:= 1;\

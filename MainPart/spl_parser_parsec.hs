@@ -1,5 +1,17 @@
+{-
+Name: spl_parser_parsec.hs
+Author: Nikolay Bikchentaev
+Version: 1.0
+===========================
+This program parses SPL source code
+using Parsec Expr and Language modules
+-}
+{-# OPTIONS_GHC -Wall #-}
+
+module SPLParserParsec where
+
 import Control.Monad
-import System.IO
+import Data.Functor.Identity
 import Text.ParserCombinators.Parsec
 import Text.ParserCombinators.Parsec.Expr
 import Text.ParserCombinators.Parsec.Language
@@ -46,10 +58,16 @@ data Type
 
 type Program = Stmt
 
+-- Keywords
+rNames :: [String]
 rNames = words "true false bool int if else while for"
 
+-- Operators
+opNames :: [String]
 opNames = words "+ - * / < <= > >= := == & | ++"
 
+-- Language definition
+languageDef :: GenLanguageDef String u Data.Functor.Identity.Identity
 languageDef =
   emptyDef
     { Token.commentStart = "/*"
@@ -79,9 +97,6 @@ whiteSpace = Token.whiteSpace lexer
 
 symbol = Token.symbol lexer
 
-parseProgram :: String -> Either ParseError Stmt
-parseProgram = parse (whiteSpace >> stmt) ""
-
 stmt :: Parser Stmt
 stmt =
   forStmt <|> whileStmt <|> ifStmt <|>
@@ -92,13 +107,13 @@ stmt =
 forStmt :: Parser Stmt
 forStmt = do
   reserved "for"
-  symbol "("
+  void $ symbol "("
   st1 <- stmt
-  symbol ";"
+  void $ symbol ";"
   cond <- expr
-  symbol ";"
+  void $ symbol ";"
   st2 <- stmt
-  symbol ")"
+  void $ symbol ")"
   For st1 cond st2 <$> stmt
 
 whileStmt :: Parser Stmt
@@ -126,19 +141,19 @@ assignSt var =
 defin :: Parser (String, Type)
 defin = do
   tp <- (reserved "int" >> return It) <|> (reserved "bool" >> return Bt)
-  id <- identifier
-  symbol ";"
-  return (id, tp)
+  iden <- identifier
+  void $ symbol ";"
+  return (iden, tp)
 
 listStmt :: Parser [Stmt]
 listStmt = stmt `sepBy` (symbol ";")
 
 blockStmt :: Parser Stmt
 blockStmt = do
-  symbol "{"
+  void $ symbol "{"
   defs <- many defin
   sts <- listStmt
-  symbol "}"
+  void $ symbol "}"
   return $ Block defs sts
 
 operators =
@@ -168,6 +183,9 @@ term =
 
 expr :: Parser Exp
 expr = buildExpressionParser operators term
+
+startParser :: String -> Either ParseError Stmt
+startParser = parse (whiteSpace >> stmt) ""
 
 power :: String
 power =
