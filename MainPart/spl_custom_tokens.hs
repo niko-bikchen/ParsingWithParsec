@@ -249,7 +249,16 @@ lexer _ _ [] = []
 lexer lin col input@(ch:chrs)
   | any (`isPrefixOf` input) arithmeticOperators =
     case parseArithmOp lin col input of
-      Just (tok, newLin, newCol, rest) -> tok : lexer newLin newCol rest
+      Just (tok, newLin, newCol, rest) ->
+        case rest of
+          ('-':remains) ->
+            case parseNumLiteral newLin newCol remains of
+              Just (NumConstToken l c n, newerLin, newerCol, remainder) ->
+                tok :
+                NumConstToken l c (n * (-1)) : lexer newerLin newerCol remainder
+              Just (_, _, _, _) -> lexer lin col input
+              Nothing -> lexer lin col input
+          _ -> tok : lexer newLin newCol rest
       Nothing -> lexer lin col input
   | any (`isPrefixOf` input) boolOperators =
     case parseBoolOp lin col input of
